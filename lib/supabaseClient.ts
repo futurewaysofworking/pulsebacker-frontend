@@ -1,7 +1,20 @@
 // lib/supabaseClient.ts
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+/**
+ * Use ONLY in client components (browser).
+ * It reads NEXT_PUBLIC_* envs and throws a helpful error if missing.
+ */
+export function getBrowserSupabase(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  if (!url || !anon) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. ' +
+      'Add them to .env.local for local dev and Vercel Project → Settings → Environment Variables for deploys.'
+    );
+  }
+
+  return createClient(url, anon);
+}

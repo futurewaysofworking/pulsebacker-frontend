@@ -1,48 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 
-// Setup Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic'; // don't prerender this route
 
-// Setup OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+// Create clients at request time (prevents "supabaseKey is required" at build)
+function getSupabaseAnon(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  return createClient(url, anon);
+}
+
+function getOpenAI() {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error('Missing OPENAI_API_KEY');
+  return new OpenAI({ apiKey: key });
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const prompt = (body?.prompt ?? '').toString().trim();
 
     if (!prompt) {
       return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
     }
 
-    // Create embedding of the prompt
-    const embeddingRes = await openai.embeddings.create({
-      input: prompt,
+    const openai = getOpenAI();
+    const embRes = await openai.embeddings.create({
       model: 'text-embedding-3-small',
+      input: prompt,
     });
+    const queryEmbedding = embRes.data?.[0]?.embedding;
+    if (!queryEmbedding) {
+      return NextResponse.json({ error: 'Failed to create embedding' }, { status: 500 });
+    }
 
-    const promptEmbedding = embeddingRes.data[0].embedding;
-
-    // Match using Supabase vector search
+    const supabase = getSupabaseAnon();
     const { data, error } = await supabase.rpc('match_athletes', {
-      query_embedding: promptEmbedding,
+      query_embedding: queryEmbedding,
       match_count: 5,
     });
 
     if (error) {
-      console.error('Supabase function error:', error);
-      return NextResponse.json({ error: 'Matching error' }, { status: 500 });
+      console.error('Supabase RPC error:', error);
+      return NextResponse.json({ error: 'Matching error: ' + error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ matches: data });
-  } catch (err) {
-    console.error('API error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ matches: Array.isArray(data) ? data : [] }, { status: 200 });
+  } catch (e: any) {
+    console.error('API /api/match error:', e?.message || e);
+    return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 });
   }
 }
+

@@ -3,11 +3,12 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic'; // avoid any prerendering/caching for this route
 
-// Helper: create clients at runtime, not module scope
+// --- Helpers: create clients at runtime (not module scope) ---
 function getSupabaseAdmin(): SupabaseClient {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY; // service role key (server-only)
   if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key);
 }
@@ -18,68 +19,83 @@ function getOpenAI() {
   return new OpenAI({ apiKey });
 }
 
-// Optional GET probe so you can hit the route in a browser and see it’s live
+function buildText(r: any) {
+  return `
+Name: @${r?.Insta_handle ?? ''}
+Sport: ${r?.Sport ?? ''}
+Location: ${r?.Location ?? ''}
+Followers: ${r?.Followers ?? ''}
+About me: ${r?.About_me ?? ''}
+`.trim();
+}
+
+// --- Optional GET probe so you can test in the browser ---
 export async function GET() {
   return NextResponse.json({ ok: true, route: '/api/athletes/webhook' }, { status: 200 });
 }
 
+// --- Webhook handler ---
 export async function POST(req: NextRequest) {
   try {
-    // (Optional) shared-secret check
+    // Optional shared-secret verification
     const secret = process.env.WEBHOOK_SECRET;
     if (secret) {
       const incoming = req.headers.get('x-webhook-secret');
       if (incoming !== secret) {
+        console.error('Unauthorized webhook (bad secret)');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     }
 
-    const payload = await req.json();
-    // Only handle INSERT on Athletes
-    if (!payload || payload.table !== 'Athletes' || payload.type !== 'INSERT' || !payload.record) {
+    const payload = await req.json().catch(() => null);
+    if (!payload || payload.table !== 'Athletes' || !payload.record) {
       return NextResponse.json({ ok: true, ignored: true });
     }
 
-    const supabase = getSupabaseAdmin();
-    const openai = getOpenAI();
+    // Handle INSERTs (and UPDATEs if you enable this)
+    const isInsert = payload.type === 'INSERT';
+    const isUpdate = payload.type === 'UPDATE'; // set a Supabase UPDATE webhook if you want re-embedding
+    if (!isInsert && !isUpdate) {
+      return NextResponse.json({ ok: true, ignored: 'not insert/update' });
+    }
 
     const r = payload.record;
 
-    // Build text to embed
-    const text = `
-Name: @${r.Insta_handle ?? ''}
-Sport: ${r.Sport ?? ''}
-Location: ${r.Location ?? ''}
-Followers: ${r.Followers ?? ''}
-About me: ${r.About_me ?? ''}
-`.trim();
+    // If embedding exists and it's an INSERT, skip. For UPDATE, re-embed if you want fresher vectors.
+    if (isInsert && Array.isArray(r.embedding) && r.embedding.length) {
+      return NextResponse.json({ ok: true, alreadyEmbedded: true });
+    }
 
+    const text = buildText(r);
     if (!text.replace(/\s/g, '')) {
       return NextResponse.json({ error: 'Empty text' }, { status: 400 });
     }
 
-    // Create embedding
+    const openai = getOpenAI();
     const embRes = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: text,
     });
     const embedding = embRes.data?.[0]?.embedding;
     if (!embedding) {
+      console.error('No embedding returned from OpenAI');
       return NextResponse.json({ error: 'No embedding returned' }, { status: 500 });
     }
 
-    // Update row
+    const supabase = getSupabaseAdmin();
     const { error } = await supabase
       .from('Athletes')
       .update({ embedding })
       .eq('id', r.id);
 
     if (error) {
+      console.error('DB update error:', error);
       return NextResponse.json({ error: 'DB update error: ' + error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, reembedded: isUpdate || undefined });
   } catch (e: any) {
+    console.error('Webhook fatal:', e?.message || e);
     return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 });
   }
 }
