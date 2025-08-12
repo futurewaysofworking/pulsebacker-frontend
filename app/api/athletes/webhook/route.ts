@@ -1,93 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 
-export const runtime = 'nodejs'; // ensure Node runtime for OpenAI SDK
+export const runtime = 'nodejs';
 
-// Use service role key (server-side only!)
-const supabase = createClient(
-  process.env.SUPABASE_URL!,                 // e.g. https://xxxx.supabase.co
-  process.env.SUPABASE_SERVICE_ROLE_KEY!     // service role key
-);
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-// Optional simple secret check
-function verifySecret(req: NextRequest) {
-  const incoming = req.headers.get('x-webhook-secret');
-  const expected = process.env.WEBHOOK_SECRET;
-  return expected && incoming && incoming === expected;
+// Helper: create clients at runtime, not module scope
+function getSupabaseAdmin(): SupabaseClient {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(url, key);
 }
 
-type RowPayload = {
-  type: 'INSERT' | 'UPDATE' | 'DELETE';
-  table: string;
-  schema?: string;
-  record?: {
-    id: string;
-    Insta_handle?: string;
-    Sport?: string;
-    Location?: string;
-    Followers?: number;
-    About_me?: string;
-    embedding?: number[] | null;
-  };
-};
+function getOpenAI() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('Missing OPENAI_API_KEY');
+  return new OpenAI({ apiKey });
+}
+
+// Optional GET probe so you can hit the route in a browser and see it’s live
+export async function GET() {
+  return NextResponse.json({ ok: true, route: '/api/athletes/webhook' }, { status: 200 });
+}
 
 export async function POST(req: NextRequest) {
   try {
-    // (optional) verify a shared secret
-    if (process.env.WEBHOOK_SECRET && !verifySecret(req)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // (Optional) shared-secret check
+    const secret = process.env.WEBHOOK_SECRET;
+    if (secret) {
+      const incoming = req.headers.get('x-webhook-secret');
+      if (incoming !== secret) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
-    const payload = (await req.json()) as RowPayload;
-
-    // Only handle INSERTs into Athletes
-    if (payload.table !== 'Athletes' || payload.type !== 'INSERT' || !payload.record) {
+    const payload = await req.json();
+    // Only handle INSERT on Athletes
+    if (!payload || payload.table !== 'Athletes' || payload.type !== 'INSERT' || !payload.record) {
       return NextResponse.json({ ok: true, ignored: true });
     }
 
+    const supabase = getSupabaseAdmin();
+    const openai = getOpenAI();
+
     const r = payload.record;
 
-    // If already has embedding, skip
-    if (Array.isArray(r.embedding) && r.embedding.length) {
-      return NextResponse.json({ ok: true, alreadyEmbedded: true });
-    }
-
-    // Build rich text for embedding
+    // Build text to embed
     const text = `
 Name: @${r.Insta_handle ?? ''}
 Sport: ${r.Sport ?? ''}
 Location: ${r.Location ?? ''}
 Followers: ${r.Followers ?? ''}
 About me: ${r.About_me ?? ''}
-    `.trim();
+`.trim();
 
-    // Generate embedding
+    if (!text.replace(/\s/g, '')) {
+      return NextResponse.json({ error: 'Empty text' }, { status: 400 });
+    }
+
+    // Create embedding
     const embRes = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: text,
     });
-    const embedding = embRes.data[0].embedding;
+    const embedding = embRes.data?.[0]?.embedding;
+    if (!embedding) {
+      return NextResponse.json({ error: 'No embedding returned' }, { status: 500 });
+    }
 
-    // Update the row
+    // Update row
     const { error } = await supabase
       .from('Athletes')
       .update({ embedding })
       .eq('id', r.id);
 
     if (error) {
-      console.error('Supabase update error:', error);
-      return NextResponse.json({ error: 'DB update error' }, { status: 500 });
+      return NextResponse.json({ error: 'DB update error: ' + error.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error('Webhook error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 });
   }
-}
-export async function GET() {
-  return new Response('OK', { status: 200 });
 }
