@@ -88,3 +88,6 @@ About me: ${r.About_me ?? ''}
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+export async function GET() {
+  return new Response('OK', { status: 200 });
+}
