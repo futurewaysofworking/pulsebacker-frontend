@@ -1,15 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+
+type Athlete = {
+  id?: string;
+  Insta_handle?: string;
+  Sport?: string;
+  Location?: string;
+  Followers?: number | string;
+  About_me?: string;
+  similarity?: number; // optional, if your API returns it
+};
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string>('');
 
-  const handleSearch = async () => {
-    if (!prompt.trim()) return;
+  const handleSearch = useCallback(async () => {
+    const q = prompt.trim();
+    if (!q) {
+      setError('Please enter a brief description of the athlete you’re looking for.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setResults([]);
@@ -17,77 +32,157 @@ export default function Home() {
     try {
       const res = await fetch('/api/match', {
         method: 'POST',
-        body: JSON.stringify({ prompt }),
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: q }),
       });
 
-      const data = await res.json();
+      // Safeguard against empty/invalid JSON
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
 
-      if (res.ok && data.matches) {
-        setResults(data.matches);
+      if (res.ok && Array.isArray(data.matches)) {
+        setResults(data.matches as Athlete[]);
+        if (!data.matches.length) setError('No matches found. Try a broader prompt or different values.');
       } else {
-        setError('No matches found or error occurred.');
+        setError(data?.error || 'No matches found or an error occurred.');
       }
-    } catch (err) {
-      setError('Error fetching results.');
-      console.error(err);
+    } catch (e) {
+      console.error(e);
+      setError('Error fetching results. Please try again.');
+    } finally {
+      setLoading(false);
     }
+  }, [prompt]);
 
-    setLoading(false);
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSearch();
+    }
   };
 
   return (
-    <main style={{ padding: '2rem', maxWidth: '700px', margin: 'auto', fontFamily: 'Arial, sans-serif' }}>
-      <h1 style={{ fontSize: '2rem', marginBottom: '1rem' }}>🎯 Find the Right Athlete</h1>
+    <main style={{ padding: '2rem', maxWidth: 820, margin: '0 auto', fontFamily: 'Inter, system-ui, Arial, sans-serif' }}>
+      <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎯 Find the Right Athlete</h1>
+      <p style={{ marginTop: 0, color: '#666', marginBottom: '1rem' }}>
+        Describe your ideal partner. For example: <em>“Brisbane-based gymnast who mentors youth and values consistency.”</em>
+      </p>
 
+      <label htmlFor="prompt" style={{ display: 'block', fontWeight: 600, marginBottom: 8 }}>
+        Your brief
+      </label>
       <textarea
-        placeholder="Describe your ideal athlete. E.g. 'female swimmer with values around teamwork and body positivity'"
+        id="prompt"
+        placeholder="e.g. Female swimmer, sustainability focused, strong community presence"
         rows={5}
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        style={{ width: '100%', padding: '1rem', fontSize: '1rem', marginBottom: '1rem' }}
+        onKeyDown={onKeyDown}
+        style={{
+          width: '100%',
+          padding: '1rem',
+          fontSize: '1rem',
+          lineHeight: 1.5,
+          border: '1px solid #ccc',
+          borderRadius: 8,
+          outline: 'none',
+        }}
       />
 
-      <button
-        onClick={handleSearch}
-        disabled={loading}
-        style={{
-          padding: '0.75rem 1.5rem',
-          fontSize: '1rem',
-          backgroundColor: '#0070f3',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: loading ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {loading ? 'Searching...' : 'Find Matches'}
-      </button>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
+        <button
+          onClick={handleSearch}
+          disabled={loading}
+          style={{
+            padding: '0.75rem 1.25rem',
+            fontSize: '1rem',
+            backgroundColor: loading ? '#6ea8fe' : '#0070f3',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {loading ? 'Searching…' : 'Find Matches'}
+        </button>
+        <span style={{ fontSize: 12, color: '#777' }}>Tip: ⌘/Ctrl + Enter to search</span>
+      </div>
 
-      {error && <p style={{ color: 'red', marginTop: '1rem' }}>{error}</p>}
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 16,
+            padding: '10px 12px',
+            borderRadius: 8,
+            background: '#fff2f2',
+            color: '#b00020',
+            border: '1px solid #ffcdd2',
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       {results.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h2>🏅 Top Matches</h2>
-          {results.map((athlete, index) => (
-            <div
-              key={athlete.id || index}
-              style={{
-                marginBottom: '1.5rem',
-                padding: '1rem',
-                border: '1px solid #ccc',
-                borderRadius: '8px',
-              }}
-            >
-              <p><strong>@{athlete.Insta_handle}</strong></p>
-              <p><strong>Sport:</strong> {athlete.Sport}</p>
-              <p><strong>Location:</strong> {athlete.Location}</p>
-              <p><strong>Followers:</strong> {athlete.Followers}</p>
-              <p><strong>About me:</strong> {athlete.About_me}</p>
-            </div>
-          ))}
-        </div>
+        <section style={{ marginTop: '2rem' }}>
+          <h2 style={{ marginBottom: '1rem' }}>🏅 Top Matches</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+            {results.map((athlete, index) => {
+              const score =
+                typeof athlete.similarity === 'number'
+                  ? `${(athlete.similarity * 100).toFixed(1)}%`
+                  : undefined;
+
+              return (
+                <article
+                  key={athlete.id || index}
+                  style={{
+                    padding: '1rem',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    background: '#fff',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <p style={{ margin: 0, fontWeight: 700 }}>
+                      @{athlete.Insta_handle || 'unknown'}
+                    </p>
+                    {score && (
+                      <span
+                        title="Match score"
+                        style={{
+                          fontSize: 12,
+                          padding: '2px 8px',
+                          background: '#eef2ff',
+                          color: '#3730a3',
+                          borderRadius: 999,
+                        }}
+                      >
+                        {score}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: '6px 0 0 0' }}>
+                    <strong>Sport:</strong> {athlete.Sport || '—'}
+                  </p>
+                  <p style={{ margin: '4px 0 0 0' }}>
+                    <strong>Location:</strong> {athlete.Location || '—'}
+                  </p>
+                  <p style={{ margin: '4px 0 0 0' }}>
+                    <strong>Followers:</strong> {athlete.Followers ?? '—'}
+                  </p>
+                  <p style={{ margin: '8px 0 0 0', color: '#374151' }}>
+                    <strong>About:</strong> {athlete.About_me || '—'}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       )}
     </main>
   );
 }
+
