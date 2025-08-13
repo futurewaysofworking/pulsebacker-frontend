@@ -1,0 +1,11 @@
+{"projectId":"prj_xkDzNt48t91p9ts2PonV5x8sc1Fd","orgId":"team_Sq8WBgiSl4ZEwGFBe5rs07Jk","projectName":"pulsebacker-frontend","settings": {
+    "createdAt": 1754887258585,
+    "framework": "nextjs",
+    "devCommand": "next dev",
+    "installCommand": "npm install",
+    "buildCommand": "npm run build",
+    "outputDirectory": "",
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "22.x"}
+}
