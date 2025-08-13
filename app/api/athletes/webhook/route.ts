@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic'; // avoid any prerendering/caching for th
 
 // --- Helpers: create clients at runtime (not module scope) ---
 function getSupabaseAdmin(): SupabaseClient {
-  const url = process.env.SUPABASE_URL;
+  // Prefer server-only var; fall back to public URL if not set
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY; // service role key (server-only)
-  if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) throw new Error('Missing Supabase envs: require SUPABASE_SERVICE_ROLE_KEY and URL (SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL).');
   return createClient(url, key);
 }
 
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     // Handle INSERTs (and UPDATEs if you enable this)
     const isInsert = payload.type === 'INSERT';
-    const isUpdate = payload.type === 'UPDATE'; // set a Supabase UPDATE webhook if you want re-embedding
+    const isUpdate = payload.type === 'UPDATE'; // add an UPDATE webhook in Supabase if you want re-embed on edits
     if (!isInsert && !isUpdate) {
       return NextResponse.json({ ok: true, ignored: 'not insert/update' });
     }
