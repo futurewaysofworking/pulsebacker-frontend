@@ -62,7 +62,10 @@ export async function POST(req: NextRequest) {
       model: 'text-embedding-3-small',
       input: text,
     });
-
+    //debugging
+    const supabase = getSupabaseAdmin();
+    const who = await supabase.rpc('whoami');           // <-- diagnostic
+    console.log('whoami ->', JSON.stringify(who.data), who.error);
     const vector = emb.data[0].embedding;
 
     // Write back
