@@ -22,8 +22,8 @@ async function buildEmbeddingInput(record: any) {
       record.sport ?? '',
       record.about_me ?? '',
       `Followers: ${record.followers ?? ''}`,
-    ].join(' | ');
-  return text.trim();
+    ].join(' | ')
+  ).trim();
 }
 
 // --- Webhook handler ---
@@ -52,10 +52,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: 'event not handled' });
     }
 
+    const supabase = getSupabaseAdmin();
+
+    // 🔎 Debug: verify role/JWT once
+    const { data: whoamiData, error: whoamiError } = await supabase.rpc('whoami');
+    console.log('whoami ->', JSON.stringify(whoamiData), whoamiError);
+
     const text = await buildEmbeddingInput(record);
-    if (!text) {
-      return NextResponse.json({ ok: true, skipped: 'empty text' });
-    }
+    if (!text) return NextResponse.json({ ok: true, skipped: 'empty text' });
 
     // Call OpenAI embeddings (replace model if you use another)
     const emb = await openai.embeddings.create({
