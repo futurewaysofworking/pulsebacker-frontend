@@ -14,56 +14,60 @@ function getSupabaseAdmin() {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 async function buildEmbeddingInput(record: any) {
-  // Safe stringifier that handles null/undefined
-  const s = (v: any) => (v === null || v === undefined ? '' : String(v));
-
-  if (record && typeof record.embedding_source === 'string' && record.embedding_source.trim() !== '') {
-    return record.embedding_source.trim();
-  }
-
-  const parts = [
-    s(record?.location),
-    s(record?.sport),
-    s(record?.about_me),
-    'Followers: ' + s(record?.followers),
-  ];
-
-  return parts.join(' | ').trim();
+  // Prefer the prebuilt helper if present; else concatenate here
+  const text =
+    record.embedding_source ??
+    [
+      record.location ?? '',
+      record.sport ?? '',
+      record.about_me ?? '',
+      Followers: ${record.followers ?? ''},
+    ].join(' | ');
+  return text.trim();
 }
+
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const { type, record } = payload as {
-      type: 'INSERT' | 'UPDATE' | 'DELETE';
+    // Supabase DB Webhooks payload shape:
+    // { type: 'INSERT'|'UPDATE'|'DELETE', table: 'athletes', record, schema, old_record? }
+
+    const { type, record, table } = payload as {
+      type: string;
       table: string;
       record: any;
       schema: string;
       old_record?: any;
     };
 
-    if (!record?.id) return NextResponse.json({ ok: true, skipped: 'no record' });
+    if (!record || !record.id) {
+      return NextResponse.json({ ok: true, skipped: 'no record' });
+    }
+
+    // Only act on INSERT or on UPDATEs to the watched columns
     if (type !== 'INSERT' && type !== 'UPDATE') {
       return NextResponse.json({ ok: true, skipped: 'event not handled' });
     }
 
-    const supabase = getSupabaseAdmin();
-
-    // 🔎 Debug: verify role/JWT once
-    const { data: whoamiData, error: whoamiError } = await supabase.rpc('whoami');
-    console.log('whoami ->', JSON.stringify(whoamiData), whoamiError);
-
     const text = await buildEmbeddingInput(record);
-    if (!text) return NextResponse.json({ ok: true, skipped: 'empty text' });
+    if (!text) {
+      return NextResponse.json({ ok: true, skipped: 'empty text' });
+    }
 
+    // Call OpenAI embeddings (replace model if you use another)
     const emb = await openai.embeddings.create({
       model: 'text-embedding-3-small',
       input: text,
     });
+
     const vector = emb.data[0].embedding;
 
-    // 🔒 Hardcode your actual table name to avoid casing issues
-    const TABLE = 'Athletes'; // use 'athletes' if the table was created unquoted/lowercase
-    const { error } = await supabase.from(TABLE).update({ embedding: vector }).eq('id', record.id);
+    // Write back
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from(table) // "athletes"
+      .update({ embedding: vector })
+      .eq('id', record.id);
 
     if (error) {
       console.error('Supabase update error:', error);
@@ -75,3 +79,4 @@ export async function POST(req: NextRequest) {
     console.error('Webhook error:', err);
     return NextResponse.json({ ok: false, error: err?.message ?? 'unknown' }, { status: 500 });
   }
+}
