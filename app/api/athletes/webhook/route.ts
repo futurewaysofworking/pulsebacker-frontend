@@ -25,8 +25,6 @@ async function buildEmbeddingInput(record: any) {
     ].join(' | ')
   ).trim();
 }
-
-// --- Webhook handler ---
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
