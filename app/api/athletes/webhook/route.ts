@@ -83,3 +83,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'unknown' }, { status: 500 });
   }
 }
+whoami -> {
+  "db_role": "service_role",
+  "uid": null,
+  "claims": { ... }
+}
