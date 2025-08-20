@@ -62,9 +62,18 @@ export default function Home() {
   };
 
   return (
-    <main style={{ padding: '2rem', maxWidth: 820, margin: '0 auto', fontFamily: 'Inter, system-ui, Arial, sans-serif' }}>
-      <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎯 Find the Right Athlete</h1>
-      <p style={{ marginTop: 0, color: '#666', marginBottom: '1rem' }}>
+    <main
+      style={{
+        padding: '2rem',
+        maxWidth: 820,
+        margin: '0 auto',
+        fontFamily: 'Orbitron, system-ui, Arial, sans-serif', // CHANGED: font family
+        backgroundColor: '#F0B53E', // CHANGED: page background
+        color: '#EE227D', // CHANGED: font color
+      }}
+    >
+      <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}> Find the Right Sportsperson for your brand </h1>
+      <p style={{ marginTop: 0, color: '#EE227D', marginBottom: '1rem' }}>
         Describe your ideal partner. For example: <em>“Brisbane-based gymnast who mentors youth and values consistency.”</em>
       </p>
 
@@ -86,6 +95,7 @@ export default function Home() {
           border: '1px solid #ccc',
           borderRadius: 8,
           outline: 'none',
+          color: '#EE227D', // CHANGED: font color
         }}
       />
 
@@ -96,8 +106,8 @@ export default function Home() {
           style={{
             padding: '0.75rem 1.25rem',
             fontSize: '1rem',
-            backgroundColor: loading ? '#6ea8fe' : '#0070f3',
-            color: '#fff',
+            backgroundColor: '#F0B53E', // CHANGED: button background
+            color: '#EE227D', // CHANGED: button font color
             border: 'none',
             borderRadius: 8,
             cursor: loading ? 'not-allowed' : 'pointer',
@@ -105,7 +115,7 @@ export default function Home() {
         >
           {loading ? 'Searching…' : 'Find Matches'}
         </button>
-        <span style={{ fontSize: 12, color: '#777' }}>Tip: ⌘/Ctrl + Enter to search</span>
+        <span style={{ fontSize: 12, color: '#EE227D' }}>Tip: ⌘/Ctrl + Enter to search</span>
       </div>
 
       {error && (
@@ -116,7 +126,7 @@ export default function Home() {
             padding: '10px 12px',
             borderRadius: 8,
             background: '#fff2f2',
-            color: '#b00020',
+            color: '#EE227D', // CHANGED: font color
             border: '1px solid #ffcdd2',
           }}
         >
@@ -126,7 +136,7 @@ export default function Home() {
 
       {results.length > 0 && (
         <section style={{ marginTop: '2rem' }}>
-          <h2 style={{ marginBottom: '1rem' }}>🏅 Top Matches</h2>
+          <h2 style={{ marginBottom: '1rem' }}> Top Matches</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
             {results.map((athlete, index) => {
               const score =
@@ -146,7 +156,14 @@ export default function Home() {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <p style={{ margin: 0, fontWeight: 700 }}>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontWeight: 700,
+                        filter: 'blur(4px)', // CHANGED: blur handle
+                        userSelect: 'none', // CHANGED: prevent text selection
+                      }}
+                    >
                       @{athlete.Insta_handle || 'unknown'}
                     </p>
                     {score && (
@@ -156,7 +173,7 @@ export default function Home() {
                           fontSize: 12,
                           padding: '2px 8px',
                           background: '#eef2ff',
-                          color: '#3730a3',
+                          color: '#EE227D', // CHANGED: font color
                           borderRadius: 999,
                         }}
                       >
@@ -173,7 +190,7 @@ export default function Home() {
                   <p style={{ margin: '4px 0 0 0' }}>
                     <strong>Followers:</strong> {athlete.Followers ?? '—'}
                   </p>
-                  <p style={{ margin: '8px 0 0 0', color: '#374151' }}>
+                  <p style={{ margin: '8px 0 0 0', color: '#EE227D' }}>
                     <strong>About:</strong> {athlete.About_me || '—'}
                   </p>
                 </article>
@@ -185,4 +202,3 @@ export default function Home() {
     </main>
   );
 }
-
